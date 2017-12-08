@@ -1,16 +1,22 @@
 const command = require('commander')
 const fs = require('fs')
+const uuidv5 = require('uuid/v5')
 
 const readFile = (path) => new Promise((resolve, reject) => fs.readFile(path, 'utf8', (error, data) => error ? reject(error) : resolve(data.replace(';', '\n'))))
 
+const pathToModuleMapping = {}
+const fileAlreadyParsed = (absolutePath) => !!pathToModuleMapping[absolutePath]
+const resolve = (absolutePath) => pathToModuleMapping[absolutePath]
+const register = (absolutePath, moduleId) => { pathToModuleMapping[absolutePath] = moduleId }
+
+const pathIsRelative = (path) => path.startsWith('./')
+
 const lengthOfRequire = 'require'.length
-
-const parse = async function (path) {
-  const data = await readFile(path)
-
-  // find and strip out require statements
+const resolveRequires = async (data, path) => {
   let index = 0
-  const requireStatements = []
+  let codeWithResolvedRequires = data
+  let dependencies = []
+
   while (index > -1) {
     index = data.indexOf('require', index)
     if (index > -1) {
@@ -28,18 +34,148 @@ const parse = async function (path) {
         }
       }
 
-      requireStatements.push(data.substring(index + lengthOfRequire + 2, endIndex - 2))
+      const requiredPath = data.substring(index + lengthOfRequire + 2, endIndex - 2)
+      let resolvedRequire
+      if (pathIsRelative(requiredPath)) {
+        const absolutePath = path.substring(0, path.lastIndexOf('/')) + requiredPath.substr(1)
+
+        if (!fileAlreadyParsed(absolutePath)) {
+          const parsed = await parse(absolutePath)
+          dependencies = dependencies.concat(parsed)
+        }
+
+        codeWithResolvedRequires = codeWithResolvedRequires.substring(0, index) + resolve(absolutePath) + codeWithResolvedRequires.substring(endIndex)
+      }
+
       index = endIndex
     }
   }
 
-  const relativeRequireFiles = requireStatements
-    .filter((path) => path.startsWith('./'))
-    .map((path) => path.substr(1))
+  return {
+    dependencies,
+    codeWithResolvedRequires
+  }
+}
 
-  const resolved = await Promise.all(relativeRequireFiles.map((relativePath) => parse(path.substring(0, path.lastIndexOf('/')) + relativePath)))
+const allowedCharsBefore = [
+  '.',
+  ' ',
+  '(',
+  ')',
+  '=',
+  ',',
+  '[',
+  ']',
+  '\n',
+  '' //start of file (see: https://developer.mozilla.org/de/docs/Web/JavaScript/Reference/Global_Objects/String/charAt)
+]
 
-  return resolved.join('') + data
+const allowedCharsAfter = [
+  '.',
+  ' ',
+  '(',
+  ')',
+  '=',
+  ',',
+  '[',
+  ']',
+  '\n',
+  '' // end of file (see: https://developer.mozilla.org/de/docs/Web/JavaScript/Reference/Global_Objects/String/charAt)
+]
+
+const withNamespace = (code, namespace, upperScopeDeclaredVariables = {}) => {
+  const declaredVariables = { ...upperScopeDeclaredVariables }
+  let index = 0
+
+  while (true) {
+    let nextVar = code.indexOf('var', index)
+    nextVar = nextVar === -1 ? code.length : nextVar
+    let nextLet = code.indexOf('let', index)
+    nextLet = nextLet === -1 ? code.length : nextLet
+    let nextConst = code.indexOf('const', index)
+    nextConst = nextConst === -1 ? code.length : nextConst
+
+    const nextVariableDeclaration = nextVar < nextLet && nextVar < nextConst
+      ? nextVar
+      : nextLet < nextVar && nextLet < nextConst
+        ? nextLet
+        : nextConst
+
+    const nextScopeBegin = code.indexOf('{', index)
+    const nextScopeEnd = code.indexOf('}', index)
+
+    if (nextScopeBegin >= 0 && nextScopeBegin < nextVariableDeclaration && nextScopeBegin < nextScopeEnd) { // before the next declaration a new scope begins
+      const result = withNamespace(code.substr(nextScopeBegin + 1), namespace + index, declaredVariables)
+      result.index = nextScopeBegin + 1 + result.index
+      code = code.substring(0, nextScopeBegin + 1) + result.code + code.substr(result.index)
+      index = nextScopeBegin + result.code.length /* align current index to length of inserted code */ + 1
+    } else if (nextScopeEnd >= 0 && nextScopeEnd < nextVariableDeclaration) { // before the next declaration the current scope ends
+      index = nextScopeEnd + 1
+      break
+    } else if (nextVariableDeclaration < code.length) {
+      let offset = 0
+      switch(nextVariableDeclaration) {
+        case nextConst:
+          offset = 5
+          break
+        default:
+          offset = 3
+      }
+
+      const variableName = code.substring(nextVariableDeclaration + offset, code.indexOf('=', nextVariableDeclaration)).trim()
+      declaredVariables[variableName] = namespace + '_' + variableName
+      index = nextVariableDeclaration + offset
+    } else { // finished
+      index = code.length
+      break
+    }
+  }
+
+  let indexWithNamespacedVars = index
+  Object.keys(declaredVariables).forEach((variableName) => {
+    let currentIndex = 0
+    while (currentIndex > -1 && currentIndex < indexWithNamespacedVars) {
+      const nextString = code.indexOf('\'', currentIndex)
+      let nextOccurance = code.indexOf(variableName, currentIndex)
+      if (nextString > -1 && nextString < nextOccurance) {
+        const stringEnd = code.indexOf('\'', nextString + 1)
+        nextOccurance = code.indexOf(variableName, stringEnd + 1)
+      }
+      currentIndex = nextOccurance
+
+      if (currentIndex > -1 && currentIndex < indexWithNamespacedVars) {
+        const charBefore = code.charAt(currentIndex - 1)
+        const charAfter = code.charAt(currentIndex + variableName.length)
+
+        if (allowedCharsBefore.includes(charBefore) && allowedCharsAfter.includes(charAfter)) {
+          const lengthBefore = code.length
+          code = code.substring(0, currentIndex) + declaredVariables[variableName] + code.substr(currentIndex + variableName.length)
+          indexWithNamespacedVars = indexWithNamespacedVars + (code.length - lengthBefore)
+        }
+
+        currentIndex = currentIndex + variableName.length
+      }
+    }
+  })
+
+  return {
+    code: code.substring(0, indexWithNamespacedVars),
+    index
+  }
+}
+
+const parse = async function (path) {
+  const data = await readFile(path)
+
+  // find and strip out require statements
+  const resolved = await resolveRequires(data, path)
+
+  const moduleId = 'v' + uuidv5(path, uuidv5.URL).replace(/-/g, '')
+  register(path, moduleId)
+
+  return resolved.dependencies.join('\n') + withNamespace(resolved.codeWithResolvedRequires, moduleId, {
+    'module.exports': moduleId
+  }).code
 }
 
 const pack = function (file) {
