@@ -1,0 +1,17 @@
+{
+  "name": "nodepacker",
+  "version": "1.0.0",
+  "description": "A tool to bundle a big node program to a single file",
+  "main": "index.js",
+  "bin": {
+    "nodepacker": "./index"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "dragonraider5",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^2.12.2"
+  }
+}
