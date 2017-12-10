@@ -2,14 +2,24 @@ const command = require('commander')
 const fs = require('fs')
 const uuidv5 = require('uuid/v5')
 
+const resolvePath = (path) => new Promise((resolve, reject) => fs.realpath(path, (error, resolvedPath) => error ? reject(error) : resolve(resolvedPath)))
 const readFile = (path) => new Promise((resolve, reject) => fs.readFile(path, 'utf8', (error, data) => error ? reject(error) : resolve(data.replace(';', '\n'))))
 
 const pathToModuleMapping = {}
-const fileAlreadyParsed = (absolutePath) => !!pathToModuleMapping[absolutePath]
-const resolve = (absolutePath) => pathToModuleMapping[absolutePath]
-const register = (absolutePath, moduleId) => { pathToModuleMapping[absolutePath] = moduleId }
+const fileAlreadyParsed = async (path) => {
+  const absolutePath = await resolvePath(path)
+  return !!pathToModuleMapping[absolutePath]
+}
+const resolve = async (path) => {
+  const absolutePath = await resolvePath(path)
+  return pathToModuleMapping[absolutePath]
+}
+const register = async (path, moduleId) => {
+  const absolutePath = await resolvePath(path)
+  pathToModuleMapping[absolutePath] = moduleId
+}
 
-const pathIsRelative = (path) => path.startsWith('./')
+const pathIsRelative = (path) => path.startsWith('.')
 
 const lengthOfRequire = 'require'.length
 const resolveRequires = async (data, path) => {
@@ -39,12 +49,12 @@ const resolveRequires = async (data, path) => {
       if (pathIsRelative(requiredPath)) {
         const absolutePath = path.substring(0, path.lastIndexOf('/')) + requiredPath.substr(1)
 
-        if (!fileAlreadyParsed(absolutePath)) {
+        if (!await fileAlreadyParsed(absolutePath)) {
           const parsed = await parse(absolutePath)
           dependencies = dependencies.concat(parsed)
         }
 
-        codeWithResolvedRequires = codeWithResolvedRequires.substring(0, index) + resolve(absolutePath) + codeWithResolvedRequires.substring(endIndex)
+        codeWithResolvedRequires = codeWithResolvedRequires.substring(0, index) + await resolve(absolutePath) + codeWithResolvedRequires.substring(endIndex)
       }
 
       index = endIndex
@@ -171,7 +181,7 @@ const parse = async function (path) {
   const resolved = await resolveRequires(data, path)
 
   const moduleId = 'v' + uuidv5(path, uuidv5.URL).replace(/-/g, '')
-  register(path, moduleId)
+  await register(path, moduleId)
 
   return resolved.dependencies.join('\n') + withNamespace(resolved.codeWithResolvedRequires, moduleId, {
     'module.exports': moduleId
