@@ -17,3 +17,11 @@ nodepacker ./index.js > output.js
 ```
 
 This will bundle `index.js` and all it's dependencies (which aren't installed via npm) and print the output to the file `output.js`.
+
+## Contribution
+If you want to contribute, feel free to open a pull request containing a desrciption and your changes. There are a lot of known bugs where I simply have not taken care of fixing them yet, every help is welcome.
+
+#### Known Bugs
+- Can't handle going up in path (e.g. require('../../test.js') won't get resolved)
+- Can't handle strings marked with double quotes ("), currently only single quotes are supported (') \[in your application code\]
+- Can't handle nested strings
