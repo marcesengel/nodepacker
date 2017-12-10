@@ -1,4 +1,4 @@
-require('./test.js').test()
+require('./test/test.js').test()
 
 const hi = function () {
   console.log('hi')

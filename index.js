@@ -47,7 +47,7 @@ const resolveRequires = async (data, path) => {
       const requiredPath = data.substring(index + lengthOfRequire + 2, endIndex - 2)
       let resolvedRequire
       if (pathIsRelative(requiredPath)) {
-        const absolutePath = path.substring(0, path.lastIndexOf('/')) + requiredPath.substr(1)
+        const absolutePath = path.substring(0, path.lastIndexOf('/')) + (requiredPath.charAt(1) !== '.' ? requiredPath.substr(1) : '/' + requiredPath)
 
         if (!await fileAlreadyParsed(absolutePath)) {
           const parsed = await parse(absolutePath)

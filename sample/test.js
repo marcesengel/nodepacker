@@ -1,7 +1,3 @@
 module.exports = {
-  test: () => console.log(test + test2 + test3)
+  test3: 'Ich bin eine Layer weiter oben'
 }
-
-const test = 'hi'
-var test2 = 'blub'
-let test3 = 'fisch'
