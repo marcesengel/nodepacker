@@ -1,7 +1,7 @@
 # nodepacker
 
 ## Why?
-I wrote this tool to be able to ship Node.JS code in a single file. There are other alternatives (like webpack), but most of them are built for web, have millions of plugins and support CSS etc., which isn't needed for pure Node.JS applications.
+I wrote this tool to be able to ship Node.JS applications in a single file. There are other alternatives (like webpack), but most of them are built for web, have millions of plugins and support CSS etc., which isn't needed for pure Node.JS applications.
 
 **`nodepacker` also enables you to use [Uglify V3](https://github.com/mishoo/UglifyJS2) on your application code, making it harder for others to "take away from you", what you've worked for many hours of your life.**
 
@@ -24,3 +24,7 @@ If you want to contribute, feel free to open a pull request containing a desrcip
 #### Known Bugs
 - Can't handle strings marked with double quotes ("), currently only single quotes are supported (') \[in your application code\]
 - Can't handle nested strings
+- Doesn't support resolving require('{path}') to require('{path}/index.js')
+
+#### Possible Features
+- Warning on reassigning an export
