@@ -133,7 +133,10 @@ const withNamespace = (code, namespace, upperScopeDeclaredVariables = {}) => {
       }
 
       const variableName = code.substring(nextVariableDeclaration + offset, code.indexOf('=', nextVariableDeclaration)).trim()
-      declaredVariables[variableName] = namespace + '_' + variableName
+      if (!variableName.startsWith('{')) { // no destructuring
+        declaredVariables[variableName] = namespace + '_' + variableName
+      }
+
       index = nextVariableDeclaration + offset
     } else { // finished
       index = code.length
